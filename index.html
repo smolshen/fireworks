@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>New Year Fireworks Show</title>
+  <style>
+    body { margin: 0; background: black; overflow: hidden; }
+    canvas { display: block; }
+
+    /* Overlay tap-to-start */
+    #overlay {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: black;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-family: Arial, sans-serif;
+      cursor: pointer;
+      z-index: 10;
+      text-align: center;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="overlay">Tap anywhere to start the New Year Show!</div>
+
+<canvas id="canvas"></canvas>
+
+<!-- Audio -->
+<audio id="music" src="light.mp3" preload="auto"></audio>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const overlay = document.getElementById("overlay");
+const music = document.getElementById("music");
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener("resize", resize);
+
+let rockets = [];
+let particles = [];
+let showPhase = 0; // 0 = normal, 1 = text, 2 = heart, 3 = normal, 4 = finale
+
+function launchRocket(x = Math.random() * canvas.width, isText = false, isHeart = false, finale=false) {
+  rockets.push({
+    x, y: canvas.height, speed: finale ? 10 : 7, targetY: canvas.height * 0.4, isText, isHeart, finale
+  });
+}
+
+// Normal explosion
+function explode(x, y, big=false) {
+  const count = big ? 200 : 80;
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      angle: Math.random()*Math.PI*2,
+      speed: Math.random()*5 + (big ? 2 : 1),
+      life: big ? 150 : 100,
+      color: `hsl(${Math.random()*360},100%,${big ? 70 : 60}%)`
+    });
+  }
+}
+
+// Text explosion
+function explodeText(text, x, y) {
+  const temp = document.createElement("canvas");
+  const tctx = temp.getContext("2d");
+  temp.width = canvas.width;
+  temp.height = canvas.height;
+
+  const fontSize = Math.min(canvas.width * 0.08, 50);
+  tctx.fillStyle = "white";
+  tctx.font = `bold ${fontSize}px Arial`;
+  tctx.textAlign = "center";
+  tctx.textBaseline = "middle";
+  tctx.fillText(text, x, y);
+
+  const data = tctx.getImageData(0,0,canvas.width,canvas.height).data;
+
+  for (let i=0; i<data.length; i+=4) {
+    if (data[i+3]>150 && Math.random()<0.12) {
+      const px = (i/4)%canvas.width;
+      const py = Math.floor(i/4/canvas.width);
+      const angle = Math.random()*Math.PI*2;
+      const speed = Math.random()*0.5 + 0.2;
+      particles.push({
+        x:px, y:py,
+        vx: Math.cos(angle)*speed,
+        vy: Math.sin(angle)*speed,
+        life: 480,
+        hold: 90,
+        color:`hsl(${Math.random()*360},100%,60%)`
+      });
+    }
+  }
+}
+
+// Heart explosion
+function explodeHeart(x, y) {
+  const scale = Math.min(canvas.width, canvas.height) * 0.025;
+  const pulseCount = 2;
+  for (let p=0; p<pulseCount; p++) {
+    for (let t=0; t<Math.PI*2; t+=0.03) {
+      const px = x + scale * 16 * Math.pow(Math.sin(t),3) * (0.8 + 0.2*p);
+      const py = y - scale * (13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t)) * (0.8 + 0.2*p);
+      const angle = Math.random()*Math.PI*2;
+      const speed = Math.random()*2 + 1;
+      particles.push({x:px, y:py, angle:angle, speed:speed, life:200, color:`hsl(${Math.random()*350},100%,70%)`});
+    }
+  }
+}
+
+// Grand finale
+function finale() {
+  showPhase = 4;
+  for (let i=0; i<30; i++) {
+    launchRocket(Math.random()*canvas.width, false, false, true);
+  }
+}
+
+// Start fireworks show
+function startShow() {
+  overlay.style.display = "none";
+  music.play().catch(e => console.log("iOS tap required to start audio"));
+
+  setTimeout(()=>showPhase=1,5000);  // text
+  setTimeout(()=>showPhase=2,12000); // heart
+  setTimeout(()=>showPhase=3,15000); // normal
+  setTimeout(finale, 25000);         // grand finale
+
+  setTimeout(()=>launchRocket(canvas.width/2,true),5000);   
+  setTimeout(()=>launchRocket(canvas.width/2,false,true),12000); 
+
+  setInterval(()=>{
+    if(showPhase===0||showPhase===3||showPhase===4) launchRocket();
+  },700);
+}
+
+// Main animation loop
+function update() {
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  for(let i=rockets.length-1;i>=0;i--){
+    const r = rockets[i];
+    r.y -= r.speed;
+    ctx.fillStyle="white";
+    ctx.fillRect(r.x,r.y,2,10);
+
+    if(r.y<=r.targetY){
+      if(r.isText) explodeText("Happy New Year N'Yanisa", canvas.width/2, canvas.height*0.4);
+      else if(r.isHeart) explodeHeart(r.x,r.y);
+      else explode(r.x,r.y, r.finale);
+      rockets.splice(i,1);
+    }
+  }
+
+  for(let i=particles.length-1;i>=0;i--){
+    const p = particles[i];
+
+    if(p.angle!==undefined){
+      p.x += Math.cos(p.angle)*p.speed;
+      p.y += Math.sin(p.angle)*p.speed;
+      p.speed *= 0.98;
+    } else {
+      if(p.hold && p.hold>0) p.hold--;
+      else {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.008;
+      }
+    }
+
+    p.life--;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x,p.y,2,2);
+
+    if(p.life<=0) particles.splice(i,1);
+  }
+
+  requestAnimationFrame(update);
+}
+
+update();
+overlay.addEventListener("click", startShow);
+</script>
+
+</body>
+</html>
